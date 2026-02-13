@@ -101,27 +101,85 @@ class CartController extends Controller
 
         if (!$cart) {
             return response()->json([
-                'items' => [],
-                'count' => 0,
+                'cart_id' => null,
+                'items'   => [],
+                'count'   => 0,
             ]);
         }
 
         $items = $cart->items->map(function ($it) {
             return [
-                'id'         => $it->id,
-                'product_id' => $it->product_id,
-                'name'       => $it->product?->name,
-                'quantity'   => (int) $it->quantity,
-                'unit_price' => (float) $it->unit_price,
-                'subtotal'   => (float) ($it->quantity * $it->unit_price),
+                'id' => $it->id,              
+                'product_id'   => $it->product_id,
+                'name'         => $it->product?->name,
+                'quantity'     => (int) $it->quantity,
+                'unit_price'   => (float) $it->unit_price,
+                'subtotal'     => (float) ($it->quantity * $it->unit_price),
             ];
         })->values();
 
         $count = $items->sum('quantity');
 
         return response()->json([
-            'items' => $items,
-            'count' => $count,
+            'cart_id' => $cart->id,  // ✅ lo mandas
+            'items'   => $items,
+            'count'   => $count,
         ]);
     }
+
+    public function updateQty(Request $request, CartItem $cartItem)
+    {
+        // 1) validar usuario
+        $user = $request->user();
+        if (!$user) {
+            return response()->json(['message' => 'Unauthenticated'], 401);
+        }
+
+        // 2) validar qty (es el nuevo quantity)
+        $data = $request->validate([
+            'qty' => 'required|integer|min:1|max:99',
+        ]);
+
+        // 3) validar que el cartItem pertenezca a un cart del usuario
+        $owns = Cart::where('id', $cartItem->cart_id)
+            ->where('user_id', $user->id)
+            ->exists();
+
+        if (!$owns) {
+            return response()->json(['message' => 'Forbidden'], 403);
+        }
+
+        // 4) actualizar quantity
+        $cartItem->quantity = (int) $data['qty'];
+        $cartItem->save();
+
+        return response()->json([
+            'cart_item_id' => $cartItem->id,
+            'cart_id'      => $cartItem->cart_id,
+            'quantity'     => (int) $cartItem->quantity,
+        ]);
+    }
+
+
+
+    public function destroy(Request $request, CartItem $cartItem)
+    {
+        // 1) validar usuario
+        $user = $request->user();
+        if (!$user) {
+            return response()->json(['message' => 'Unauthenticated'], 401);
+        }
+
+        // 2) borrar el cart_item por id (viene en la URL)
+        $cartItem->delete(); // si tienes SoftDeletes, esto es soft-delete
+        // $cartItem->forceDelete(); // si lo quieres borrar definitivo
+
+        return response()->json([
+            'message' => 'ok',
+            'cart_item_id' => $cartItem->id,
+        ]);
+    }
+
+
+
 }
